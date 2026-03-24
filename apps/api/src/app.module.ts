@@ -14,6 +14,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
 import { RedisModule } from './common/redis/redis.module';
 import { StorageModule } from './common/storage/storage.module';
 import { AiModule } from './common/ai/ai.module';
+import { QueueModule } from './common/queue/queue.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AiModule } from './common/ai/ai.module';
     RedisModule,
     StorageModule,
     AiModule,
+    QueueModule,
     AuthModule,
     LtiModule,
     CoursesModule,

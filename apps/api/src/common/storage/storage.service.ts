@@ -33,6 +33,13 @@ export class StorageService {
     });
   }
 
+  async download(key: string): Promise<Buffer> {
+    const result = await this.s3
+      .getObject({ Bucket: this.bucket, Key: key })
+      .promise();
+    return result.Body as Buffer;
+  }
+
   async delete(key: string): Promise<void> {
     await this.s3.deleteObject({ Bucket: this.bucket, Key: key }).promise();
   }

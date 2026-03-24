@@ -1,31 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
-import { Mic, MicOff } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface AvatarViewProps {
   stream: MediaStream | null;
-  audioEnabled: boolean;
-  onToggleAudio: () => void;
-  onAudioChunk: (chunk: Blob) => void;
+  onAudioChunk: (chunk: ArrayBuffer) => void;
+  questionAudio: string | null;
   speaking: boolean;
 }
 
 export function AvatarView({
   stream,
-  audioEnabled,
-  onToggleAudio,
   onAudioChunk,
+  questionAudio,
   speaking,
 }: AvatarViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
   const waveCanvasRef = useRef<HTMLCanvasElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const animFrameRef = useRef<number>(0);
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
 
-  // Three.js-style animated sphere placeholder on 2D canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -41,21 +36,52 @@ export function AvatarView({
       const cx = w / 2;
       const cy = h / 2;
       const baseRadius = Math.min(w, h) * 0.22;
-      const pulse = speaking ? Math.sin(frame * 0.08) * 12 : Math.sin(frame * 0.02) * 4;
-      const radius = baseRadius + pulse;
+      const float = Math.sin(frame * 0.02) * 6;
+      const pulse = speaking ? Math.sin(frame * 0.08) * 14 : 0;
+      const radius = baseRadius + float + pulse;
 
-      const grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius);
+      if (speaking) {
+        const glow = ctx.createRadialGradient(
+          cx,
+          cy + float * 0.5,
+          radius,
+          cx,
+          cy + float * 0.5,
+          radius * 1.6,
+        );
+        glow.addColorStop(0, "rgba(59,130,246,0.25)");
+        glow.addColorStop(1, "rgba(59,130,246,0)");
+        ctx.beginPath();
+        ctx.arc(cx, cy + float * 0.5, radius * 1.6, 0, Math.PI * 2);
+        ctx.fillStyle = glow;
+        ctx.fill();
+      }
+
+      const grad = ctx.createRadialGradient(
+        cx - radius * 0.3,
+        cy - radius * 0.3 + float * 0.5,
+        radius * 0.1,
+        cx,
+        cy + float * 0.5,
+        radius,
+      );
       grad.addColorStop(0, "#93c5fd");
       grad.addColorStop(0.7, "#3b82f6");
       grad.addColorStop(1, "#1e3a8a");
 
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.arc(cx, cy + float * 0.5, radius, 0, Math.PI * 2);
       ctx.fillStyle = grad;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(cx - radius * 0.25, cy - radius * 0.25, radius * 0.12, 0, Math.PI * 2);
+      ctx.arc(
+        cx - radius * 0.25,
+        cy - radius * 0.25 + float * 0.5,
+        radius * 0.12,
+        0,
+        Math.PI * 2,
+      );
       ctx.fillStyle = "rgba(255,255,255,0.35)";
       ctx.fill();
 
@@ -77,7 +103,6 @@ export function AvatarView({
     };
   }, [speaking]);
 
-  // Audio waveform visualization
   useEffect(() => {
     if (!stream) return;
     const audioCtx = new AudioContext();
@@ -85,7 +110,6 @@ export function AvatarView({
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
     source.connect(analyser);
-    analyserRef.current = analyser;
 
     const waveCanvas = waveCanvasRef.current;
     if (!waveCanvas) return;
@@ -101,7 +125,14 @@ export function AvatarView({
       const h = waveCanvas!.offsetHeight;
       waveCanvas!.width = w * window.devicePixelRatio;
       waveCanvas!.height = h * window.devicePixelRatio;
-      ctx.setTransform(window.devicePixelRatio, 0, 0, window.devicePixelRatio, 0, 0);
+      ctx.setTransform(
+        window.devicePixelRatio,
+        0,
+        0,
+        window.devicePixelRatio,
+        0,
+        0,
+      );
       ctx.clearRect(0, 0, w, h);
 
       const barW = (w / bufferLength) * 2.5;
@@ -121,12 +152,27 @@ export function AvatarView({
     };
   }, [stream]);
 
-  // Audio recording -> chunks
+  useEffect(() => {
+    if (!questionAudio) return;
+    const audio = new Audio(questionAudio);
+    audioElRef.current = audio;
+    audio.play().catch(() => {});
+    return () => {
+      audio.pause();
+      audio.src = "";
+    };
+  }, [questionAudio]);
+
   const startRecording = useCallback(() => {
     if (!stream || recorderRef.current?.state === "recording") return;
-    const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) onAudioChunk(e.data);
+    const recorder = new MediaRecorder(stream, {
+      mimeType: "audio/webm;codecs=opus",
+    });
+    recorder.ondataavailable = async (e) => {
+      if (e.data.size > 0) {
+        const buffer = await e.data.arrayBuffer();
+        onAudioChunk(buffer);
+      }
     };
     recorder.start(250);
     recorderRef.current = recorder;
@@ -139,13 +185,10 @@ export function AvatarView({
   }, []);
 
   useEffect(() => {
-    if (audioEnabled && stream) {
-      startRecording();
-    } else {
-      stopRecording();
-    }
+    if (stream) startRecording();
+    else stopRecording();
     return stopRecording;
-  }, [audioEnabled, stream, startRecording, stopRecording]);
+  }, [stream, startRecording, stopRecording]);
 
   return (
     <div className="flex flex-1 flex-col items-center gap-4">
@@ -166,26 +209,11 @@ export function AvatarView({
       </div>
 
       <div className="w-full max-w-lg">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onToggleAudio}
-            className={cn(
-              "rounded-full p-3 transition-colors",
-              audioEnabled
-                ? "bg-primary text-white hover:bg-primary-hover"
-                : "bg-red-100 text-red-600 hover:bg-red-200",
-            )}
-            aria-label={audioEnabled ? "Mute microphone" : "Unmute microphone"}
-          >
-            {audioEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
-          </button>
-          <canvas
-            ref={waveCanvasRef}
-            className="h-12 flex-1 rounded-lg bg-neutral-bg"
-            aria-label="Your audio input level"
-          />
-        </div>
+        <canvas
+          ref={waveCanvasRef}
+          className="h-12 w-full rounded-lg bg-neutral-bg"
+          aria-label="Your audio input level"
+        />
       </div>
     </div>
   );

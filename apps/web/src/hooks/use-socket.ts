@@ -11,10 +11,10 @@ export function useSocket(sessionId: string) {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("accessToken");
 
     const socket: Socket<ServerEvents, ClientEvents> = io(`${WS_URL}/exam`, {
-      auth: { token, sessionId },
+      auth: { token },
       transports: ["websocket", "polling"],
       reconnection: true,
       reconnectionAttempts: 10,
@@ -26,11 +26,17 @@ export function useSocket(sessionId: string) {
     socket.on("connect", () => {
       setConnected(true);
 
-      const lastEventId = sessionStorage.getItem(`exam:${sessionId}:lastEventId`);
+      const lastEventId = sessionStorage.getItem(
+        `exam:${sessionId}:lastEventId`,
+      );
       if (lastEventId) {
         socket.emit("session:reconnect" as keyof ClientEvents, {
           sessionId,
           lastEventId,
+        } as never);
+      } else {
+        socket.emit("session:join" as keyof ClientEvents, {
+          sessionId,
         } as never);
       }
     });
@@ -50,7 +56,10 @@ export function useSocket(sessionId: string) {
   }, [sessionId]);
 
   const emit = useCallback(
-    <E extends keyof ClientEvents>(event: E, ...args: Parameters<ClientEvents[E]>) => {
+    <E extends keyof ClientEvents>(
+      event: E,
+      ...args: Parameters<ClientEvents[E]>
+    ) => {
       socketRef.current?.emit(event, ...args);
     },
     [],
