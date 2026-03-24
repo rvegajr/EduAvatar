@@ -1,0 +1,78 @@
+StuPath Avatar
+General Description
+StuPath Avatar is an AI avatar to provide students with a simulated oral examination. Giving oral examinations to students is not scalable with a single instructor. StuPath Avatar will host and deliver engaging oral examinations to students, evaluate the results, and provide transcripts, recordings, and that evaluation to the instructor.
+
+The tool should provide a LTI 1.3 integration with learning management systems including Blackboard, Canvas, Moodle, and Brightspace D2L.
+
+Workflows
+
+For the Instructor
+
+Instructors need to be able 
+to create, duplicate, and delete examinations
+To create, duplicate, and delete courses, which are collections of multiple examinations
+Review examination results reviewing the evaluation of the StuPath tool
+Grade examinations
+
+Examinations
+
+Examinations are composed of starting questions provided by the instructor and course materials, which may be Word documents or PDFs uploaded by the instructor to provide background for the examination. 
+
+Instructor Examination Settings
+Examinations will have the follow settings available to the instructor:
+Examination title
+Number of starting questions -This is the number of original questions the AI will ask during the session. There may be more starter questions in the question bank than the AI asks students. In other words, students will get asked different questions.
+Exam time - Maximum amount of time for the exam. This can be set to infinity.
+Retakes - The instructor can allow additional 
+End Process - Instructor may determine to allow the AI to complete it’s round of questions, 
+Random questions - this determines if the questions are asked in order or if they are randomly ordered.
+Depth of questions - This will measure how many and how complex the AI generated follow up questions to the student are on a rating from 0 to 10. We will need to adjust prompting to determine what these arbitrary numbers mean.
+TIme limit - the total time the examination can take. This can be shown to students or turned off at the student’s choice.
+Delay response time - This is the amount of silence or non-answer the AI questioner will wait before escalating the silence.
+ID Check - Whether or not to enforce an ID check at the beginning of the exam. If ID is checked, the student holds up their ID and then a picture of their face. 
+Browser Lockdown - The default is to lockdown the browser to prevent new windows or changing focus once the exam begins. See Respondus Lockdown Browser and duplicate its settings. 
+Allow breaks - THe instructor may choose to allow the student to pause the exam and take a brief break. The student will have to verify (show ID) on return.
+Accommodation Settings - The instructor needs to be able to set special attributes for specific students. This may include 
+
+Rubrics
+
+Instructors can create a rubric for the exam.
+The instructor can ask AI to make a rubric for the exam which the instructor can edit.
+The instructor can create a rubric.
+The instructor can upload an excel file rubric.
+
+Rubrics are:
+A maximum of 5 columns
+A maximum of 12 rows.
+Each row header  is an element.(word or short phrase) 
+Each column is a level of achievement.
+Each cell includes the context of how to achieve that level for that element.
+Cells can be either fixed points or the instructor can assign from a range of points.
+
+Grading
+
+Once a student or students has completed an exam, instructors may grade the results.
+
+The AI will transcribe student responses to text, applying anticipated spelling, grammar, and punctuation. The transcript will note pauses in brackets (“[pause x seconds]”). 
+
+The AI will review the student transcript against the rubric. Providing notes for each element (row) of the rubric and a proposed grade range.
+
+The AI will also make a report on pauses and whether the student appears to have sources available to them other than the student themselves. Any other evidence-based practice the AI can use to determine if a student might have used outside sources not allowed in the exam should be reviewed.
+
+The instructor will then come in, look at the AI analysis and create their own response and complete the rubric. 
+
+The instructor may review the actual video of the student. The instructor can click anywhere on the transcript to take the instructor to that point in the video minus 2 seconds (in other words the video will start 2 seconds before that word or event).
+
+As a matter of moral preference, the faculty member will not be able to click a button to accept the AI analysis. They will need to copy and paste any analysis over and select the exact point value (if that is the setting used).
+
+Student Experience
+Student Examination Settings
+Modality: Students can choose from avatar, audio, or text modalities. Avatar has students interact with a visual bot. Audio means there is simply audio coming over. Text means the exam will occur as an AI text chat.
+Microphone and Video settings. Students must allow and activate their mic and camera throughout the exam. Student may select from multiple microphones or cameras available in their system.
+Time on the exam will begin once the student presents their ID and at the end of the first question from the AI if time is being kept according to settings.
+The AI will follow the settings to deliver the oral (or written in chat) exam to students recording the entire exam with the student’s camera and mic.
+Students may request a break by saying or typing “break”. The bot will respond asking the student if they desire a break if it is allowed in the settings. The system will respond that break are not allowed otherwise and will immediately move forward with a deeper or new question.
+Throughout the exam, the bot will remind students of time remaining every five minutes, plus when two minutes are remaining if a time limit is in place.
+
+
+

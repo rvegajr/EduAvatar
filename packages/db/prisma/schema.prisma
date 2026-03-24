@@ -1,0 +1,555 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector", schema: "public"), uuidOssp(map: "uuid-ossp")]
+}
+
+// ─── 3.1 Institution ──────────────────────────────────────────────
+
+model Institution {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name      String   @db.VarChar(255)
+  domain    String?  @unique @db.VarChar(255)
+  ltiPlatformId String? @unique @map("lti_platform_id") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  users   User[]
+  courses Course[]
+
+  @@map("institutions")
+}
+
+// ─── 3.2 User ─────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institutionId String   @map("institution_id") @db.Uuid
+  externalId    String   @map("external_id") @db.VarChar(255)
+  email         String   @db.VarChar(320)
+  fullName      String   @map("full_name") @db.VarChar(255)
+  role          UserRole @default(student)
+  avatarUrl     String?  @map("avatar_url") @db.VarChar(1024)
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz()
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  institution        Institution          @relation(fields: [institutionId], references: [id])
+  enrollments        Enrollment[]
+  examSessions       ExamSession[]
+  accommodations     Accommodation[]
+  instructorGrades   InstructorGrade[]
+  editedTranscripts  Transcript[]         @relation("TranscriptEditor")
+  notifications      Notification[]
+
+  @@unique([institutionId, externalId])
+  @@index([institutionId, externalId], name: "idx_user_institution_external")
+  @@map("users")
+}
+
+enum UserRole {
+  admin
+  instructor
+  ta
+  student
+}
+
+// ─── 3.3 Course ───────────────────────────────────────────────────
+
+model Course {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  institutionId String   @map("institution_id") @db.Uuid
+  instructorId  String   @map("instructor_id") @db.Uuid
+  title         String   @db.VarChar(255)
+  ltiContextId  String?  @map("lti_context_id") @db.VarChar(255)
+  isDeleted     Boolean  @default(false) @map("is_deleted")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  institution  Institution   @relation(fields: [institutionId], references: [id])
+  examinations Examination[]
+  enrollments  Enrollment[]
+
+  @@index([instructorId], name: "idx_course_instructor")
+  @@map("courses")
+}
+
+// ─── 3.4 Enrollment ──────────────────────────────────────────────
+
+model Enrollment {
+  id        String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  courseId   String         @map("course_id") @db.Uuid
+  userId     String         @map("user_id") @db.Uuid
+  ltiRole    EnrollmentRole @default(student) @map("lti_role")
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+
+  course Course @relation(fields: [courseId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([courseId, userId])
+  @@map("enrollments")
+}
+
+enum EnrollmentRole {
+  instructor
+  ta
+  student
+}
+
+// ─── 3.5 Examination ─────────────────────────────────────────────
+
+model Examination {
+  id        String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  courseId   String          @map("course_id") @db.Uuid
+  title      String          @db.VarChar(255)
+  status     ExamStatus      @default(draft)
+  isDeleted  Boolean         @default(false) @map("is_deleted")
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+
+  course         Course          @relation(fields: [courseId], references: [id])
+  settings       ExamSettings?
+  questions      Question[]
+  materials      ExamMaterial[]
+  rubric         Rubric?
+  sessions       ExamSession[]
+  accommodations Accommodation[]
+
+  @@index([courseId], name: "idx_exam_course")
+  @@map("examinations")
+}
+
+enum ExamStatus {
+  draft
+  published
+  archived
+}
+
+// ─── 3.6 ExamSettings ────────────────────────────────────────────
+
+model ExamSettings {
+  id                    String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId         String   @unique @map("examination_id") @db.Uuid
+  numStartingQuestions  Int      @default(5) @map("num_starting_questions")
+  maxTimeSeconds        Int?     @map("max_time_seconds")
+  retakesAllowed        Int      @default(0) @map("retakes_allowed")
+  endProcess            EndProcess @default(complete_round) @map("end_process")
+  randomQuestions       Boolean  @default(false) @map("random_questions")
+  depthOfQuestions      Int      @default(5) @map("depth_of_questions") @db.SmallInt
+  delayResponseSeconds  Int      @default(15) @map("delay_response_seconds")
+  idCheckEnabled        Boolean  @default(false) @map("id_check_enabled")
+  browserLockdown       Boolean  @default(true) @map("browser_lockdown")
+  allowBreaks           Boolean  @default(false) @map("allow_breaks")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examination Examination @relation(fields: [examinationId], references: [id])
+
+  @@map("exam_settings")
+}
+
+enum EndProcess {
+  hard_stop
+  complete_round
+}
+
+// ─── 3.7 Question ────────────────────────────────────────────────
+
+model Question {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId  String   @map("examination_id") @db.Uuid
+  questionText   String   @map("question_text") @db.Text
+  sortOrder      Int      @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examination     Examination       @relation(fields: [examinationId], references: [id])
+  sessionResponses SessionResponse[]
+
+  @@map("questions")
+}
+
+// ─── 3.8 ExamMaterial ────────────────────────────────────────────
+
+model ExamMaterial {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId String   @map("examination_id") @db.Uuid
+  fileName      String   @map("file_name") @db.VarChar(255)
+  fileType      String   @map("file_type") @db.VarChar(50)
+  fileSizeBytes Int      @map("file_size_bytes")
+  storagePath   String   @map("storage_path") @db.VarChar(1024)
+  extractedText String?  @map("extracted_text") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  examination Examination        @relation(fields: [examinationId], references: [id])
+  embeddings  MaterialEmbedding[]
+
+  @@map("exam_materials")
+}
+
+// ─── 3.9 MaterialEmbedding ───────────────────────────────────────
+
+model MaterialEmbedding {
+  id             String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examMaterialId String @map("exam_material_id") @db.Uuid
+  chunkIndex     Int    @map("chunk_index")
+  chunkText      String @map("chunk_text") @db.Text
+  embedding      Unsupported("vector(1536)")
+
+  examMaterial ExamMaterial @relation(fields: [examMaterialId], references: [id])
+
+  @@map("material_embeddings")
+}
+
+// ─── 3.10 Rubric ─────────────────────────────────────────────────
+
+model Rubric {
+  id             String       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId  String       @unique @map("examination_id") @db.Uuid
+  source         RubricSource @default(manual)
+  columnHeaders  String[]     @map("column_headers") @db.VarChar(255)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examination Examination @relation(fields: [examinationId], references: [id])
+  rows        RubricRow[]
+
+  @@map("rubrics")
+}
+
+enum RubricSource {
+  manual
+  ai_generated
+  excel_import
+}
+
+// ─── 3.11 RubricRow ──────────────────────────────────────────────
+
+model RubricRow {
+  id            String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  rubricId      String  @map("rubric_id") @db.Uuid
+  elementHeader String  @map("element_header") @db.VarChar(255)
+  sortOrder     Int     @map("sort_order")
+
+  rubric              Rubric               @relation(fields: [rubricId], references: [id])
+  cells               RubricCell[]
+  aiRubricScores      AIRubricScore[]
+  instructorScores    InstructorRubricScore[]
+
+  @@map("rubric_rows")
+}
+
+// ─── 3.12 RubricCell ─────────────────────────────────────────────
+
+model RubricCell {
+  id           String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  rubricRowId  String      @map("rubric_row_id") @db.Uuid
+  columnIndex  Int         @map("column_index")
+  description  String      @db.Text
+  scoringMode  ScoringMode @default(fixed) @map("scoring_mode")
+  pointsFixed  Decimal?    @map("points_fixed") @db.Decimal(6, 2)
+  pointsMin    Decimal?    @map("points_min") @db.Decimal(6, 2)
+  pointsMax    Decimal?    @map("points_max") @db.Decimal(6, 2)
+
+  rubricRow RubricRow @relation(fields: [rubricRowId], references: [id])
+
+  @@map("rubric_cells")
+}
+
+enum ScoringMode {
+  fixed
+  range
+}
+
+// ─── 3.13 Accommodation ──────────────────────────────────────────
+
+model Accommodation {
+  id            String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId String @map("examination_id") @db.Uuid
+  studentId     String @map("student_id") @db.Uuid
+  overrides     Json   @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examination Examination @relation(fields: [examinationId], references: [id])
+  student     User        @relation(fields: [studentId], references: [id])
+
+  @@unique([examinationId, studentId])
+  @@map("accommodations")
+}
+
+// ─── 3.14 ExamSession ────────────────────────────────────────────
+
+model ExamSession {
+  id               String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examinationId    String        @map("examination_id") @db.Uuid
+  studentId        String        @map("student_id") @db.Uuid
+  attemptNumber    Int           @default(1) @map("attempt_number")
+  modality         Modality
+  status           SessionStatus @default(not_started)
+  startedAt        DateTime?     @map("started_at") @db.Timestamptz()
+  timerStartedAt   DateTime?     @map("timer_started_at") @db.Timestamptz()
+  endedAt          DateTime?     @map("ended_at") @db.Timestamptz()
+  showTimer        Boolean       @default(true) @map("show_timer")
+  recordingConsentAt DateTime?   @map("recording_consent_at") @db.Timestamptz()
+  effectiveSettings Json         @map("effective_settings")
+  idCheckImagePath  String?      @map("id_check_image_path") @db.VarChar(1024)
+  faceCheckImagePath String?     @map("face_check_image_path") @db.VarChar(1024)
+  disconnections   Json          @default("[]")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examination     Examination       @relation(fields: [examinationId], references: [id])
+  student         User              @relation(fields: [studentId], references: [id])
+  responses       SessionResponse[]
+  recording       Recording?
+  transcript      Transcript?
+  aiEvaluation    AIEvaluation?
+  integrityReport IntegrityReport?
+  instructorGrade InstructorGrade?
+  breakLogs       BreakLog[]
+
+  @@unique([examinationId, studentId, attemptNumber])
+  @@index([examinationId, studentId], name: "idx_session_exam_student")
+  @@map("exam_sessions")
+}
+
+enum Modality {
+  avatar
+  audio
+  text
+}
+
+enum SessionStatus {
+  not_started
+  in_progress
+  paused
+  completed
+  terminated
+  interrupted
+}
+
+// ─── 3.15 SessionResponse ────────────────────────────────────────
+
+model SessionResponse {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId String   @map("exam_session_id") @db.Uuid
+  questionId    String?  @map("question_id") @db.Uuid
+  speaker       Speaker
+  content       String   @db.Text
+  audioPath     String?  @map("audio_path") @db.VarChar(1024)
+  startTimeMs   Int      @map("start_time_ms")
+  endTimeMs     Int      @map("end_time_ms")
+  isFollowUp    Boolean  @default(false) @map("is_follow_up")
+  sortOrder     Int      @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id])
+  question    Question?   @relation(fields: [questionId], references: [id])
+
+  @@map("session_responses")
+}
+
+enum Speaker {
+  ai
+  student
+}
+
+// ─── 3.16 Recording ──────────────────────────────────────────────
+
+model Recording {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId String   @unique @map("exam_session_id") @db.Uuid
+  storagePath   String   @map("storage_path") @db.VarChar(1024)
+  durationMs    Int?     @map("duration_ms")
+  fileSizeBytes Int?     @map("file_size_bytes")
+  mimeType      String   @default("video/webm") @map("mime_type") @db.VarChar(100)
+  status        ProcessingStatus @default(pending)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id])
+
+  @@map("recordings")
+}
+
+enum ProcessingStatus {
+  pending
+  processing
+  complete
+  failed
+}
+
+// ─── 3.17 Transcript ─────────────────────────────────────────────
+
+model Transcript {
+  id               String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId    String           @unique @map("exam_session_id") @db.Uuid
+  fullText         String?          @map("full_text") @db.Text
+  editedText       String?          @map("edited_text") @db.Text
+  editedById       String?          @map("edited_by") @db.Uuid
+  editedAt         DateTime?        @map("edited_at") @db.Timestamptz()
+  processingStatus ProcessingStatus @default(pending) @map("processing_status")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examSession ExamSession        @relation(fields: [examSessionId], references: [id])
+  editedBy    User?              @relation("TranscriptEditor", fields: [editedById], references: [id])
+  segments    TranscriptSegment[]
+
+  @@map("transcripts")
+}
+
+// ─── 3.18 TranscriptSegment ──────────────────────────────────────
+
+model TranscriptSegment {
+  id                   String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  transcriptId         String  @map("transcript_id") @db.Uuid
+  speaker              Speaker
+  text                 String  @db.Text
+  startTimeMs          Int     @map("start_time_ms")
+  endTimeMs            Int     @map("end_time_ms")
+  confidence           Decimal? @db.Decimal(4, 3)
+  isPause              Boolean @default(false) @map("is_pause")
+  pauseDurationSeconds Decimal? @map("pause_duration_seconds") @db.Decimal(6, 2)
+  sortOrder            Int     @map("sort_order")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  transcript Transcript @relation(fields: [transcriptId], references: [id])
+
+  @@index([transcriptId, sortOrder], name: "idx_segment_transcript_order")
+  @@map("transcript_segments")
+}
+
+// ─── 3.19 AIEvaluation ───────────────────────────────────────────
+
+model AIEvaluation {
+  id               String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId    String           @unique @map("exam_session_id") @db.Uuid
+  overallNotes     String?          @map("overall_notes") @db.Text
+  processingStatus ProcessingStatus @default(pending) @map("processing_status")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examSession ExamSession     @relation(fields: [examSessionId], references: [id])
+  scores      AIRubricScore[]
+
+  @@map("ai_evaluations")
+}
+
+// ─── 3.20 AIRubricScore ──────────────────────────────────────────
+
+model AIRubricScore {
+  id             String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  aiEvaluationId String  @map("ai_evaluation_id") @db.Uuid
+  rubricRowId    String  @map("rubric_row_id") @db.Uuid
+  notes          String? @db.Text
+  suggestedMin   Decimal? @map("suggested_min") @db.Decimal(6, 2)
+  suggestedMax   Decimal? @map("suggested_max") @db.Decimal(6, 2)
+
+  aiEvaluation AIEvaluation @relation(fields: [aiEvaluationId], references: [id])
+  rubricRow    RubricRow    @relation(fields: [rubricRowId], references: [id])
+
+  @@map("ai_rubric_scores")
+}
+
+// ─── 3.21 IntegrityReport ────────────────────────────────────────
+
+model IntegrityReport {
+  id                     String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId          String   @unique @map("exam_session_id") @db.Uuid
+  pauseAnalysis          String?  @map("pause_analysis") @db.Text
+  externalSourceAnalysis String?  @map("external_source_analysis") @db.Text
+  behavioralFlags        Json     @default("[]") @map("behavioral_flags")
+  overallRiskLevel       String?  @map("overall_risk_level") @db.VarChar(20)
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id])
+
+  @@map("integrity_reports")
+}
+
+// ─── 3.22 InstructorGrade ────────────────────────────────────────
+
+model InstructorGrade {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId String   @unique @map("exam_session_id") @db.Uuid
+  instructorId  String   @map("instructor_id") @db.Uuid
+  notes         String?  @db.Text
+  totalScore    Decimal? @map("total_score") @db.Decimal(8, 2)
+  status        GradeStatus @default(draft)
+  lmsSubmittedAt DateTime? @map("lms_submitted_at") @db.Timestamptz()
+  publishedAt    DateTime? @map("published_at") @db.Timestamptz()
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  examSession ExamSession              @relation(fields: [examSessionId], references: [id])
+  instructor  User                     @relation(fields: [instructorId], references: [id])
+  scores      InstructorRubricScore[]
+
+  @@map("instructor_grades")
+}
+
+enum GradeStatus {
+  draft
+  finalized
+  submitted_to_lms
+}
+
+// ─── 3.23 InstructorRubricScore ──────────────────────────────────
+
+model InstructorRubricScore {
+  id                String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  instructorGradeId String  @map("instructor_grade_id") @db.Uuid
+  rubricRowId       String  @map("rubric_row_id") @db.Uuid
+  notes             String? @db.Text
+  score             Decimal? @db.Decimal(6, 2)
+
+  instructorGrade InstructorGrade @relation(fields: [instructorGradeId], references: [id])
+  rubricRow       RubricRow       @relation(fields: [rubricRowId], references: [id])
+
+  @@map("instructor_rubric_scores")
+}
+
+// ─── 3.24 BreakLog ───────────────────────────────────────────────
+
+model BreakLog {
+  id                      String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  examSessionId           String    @map("exam_session_id") @db.Uuid
+  breakStartedAt          DateTime  @map("break_started_at") @db.Timestamptz()
+  breakEndedAt            DateTime? @map("break_ended_at") @db.Timestamptz()
+  reVerificationImagePath String?   @map("re_verification_image_path") @db.VarChar(1024)
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  examSession ExamSession @relation(fields: [examSessionId], references: [id])
+
+  @@map("break_logs")
+}
+
+// ─── 3.25 Notification ───────────────────────────────────────────
+
+model Notification {
+  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  type        NotificationType
+  referenceId String           @map("reference_id") @db.Uuid
+  message     String           @db.Text
+  isRead      Boolean          @default(false) @map("is_read")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  exam_completed
+  evaluation_ready
+  grade_submitted
+}
